@@ -9,7 +9,7 @@
 #include <map>
 
 #ifdef USE_BSEC
-#include <bsec.h>
+#include <bsec2.h>
 #endif
 
 namespace esphome {
@@ -51,9 +51,9 @@ class BME680BSECComponent : public Component, public i2c::I2CDevice {
   void set_breath_voc_equivalent_sensor(sensor::Sensor *sensor) { this->breath_voc_equivalent_sensor_ = sensor; }
 
   static BME680BSECComponent *instance;
-  static int8_t read_bytes_wrapper(uint8_t address, uint8_t a_register, uint8_t *data, uint16_t len);
-  static int8_t write_bytes_wrapper(uint8_t address, uint8_t a_register, uint8_t *data, uint16_t len);
-  static void delay_ms(uint32_t period);
+  static int8_t read_bytes_wrapper(uint8_t a_register, uint8_t *data, uint32_t len, void *intfPtr);
+  static int8_t write_bytes_wrapper(uint8_t a_register, const uint8_t *data, uint32_t len, void *intfPtr);
+  static void delay_us(uint32_t period, void *intfPtr);
 
   void setup() override;
   void dump_config() override;
@@ -66,7 +66,7 @@ class BME680BSECComponent : public Component, public i2c::I2CDevice {
   void update_subscription_();
 
   void run_();
-  void read_(int64_t trigger_time_ns, bsec_bme_settings_t bme680_settings);
+  void read_(int64_t trigger_time_ns);
   void publish_(const bsec_output_t *outputs, uint8_t num_outputs);
   int64_t get_time_ns_();
 
@@ -76,9 +76,14 @@ class BME680BSECComponent : public Component, public i2c::I2CDevice {
   void load_state_();
   void save_state_(uint8_t accuracy);
 
-  struct bme680_dev bme680_;
+  struct bme68x_dev bme680_;
+  bsec_bme_settings_t bsec_settings;
+  struct bme68x_heatr_conf bme680_heatr_conf;
+  /* operating mode of sensor */
+  uint8_t op_mode;
+  bool sleep_mode;
   bsec_library_return_t bsec_status_{BSEC_OK};
-  int8_t bme680_status_{BME680_OK};
+  int8_t bme680_status_{BME68X_OK};
 
   int64_t last_time_ms_{0};
   uint32_t millis_overflow_counter_{0};
