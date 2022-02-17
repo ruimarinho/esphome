@@ -16,11 +16,6 @@ namespace esphome {
 namespace bme680_bsec {
 #ifdef USE_BSEC
 
-enum IAQMode {
-  IAQ_MODE_STATIC = 0,
-  IAQ_MODE_MOBILE = 1,
-};
-
 enum SampleRate {
   SAMPLE_RATE_LP = 0,
   SAMPLE_RATE_ULP = 1,
@@ -32,7 +27,6 @@ enum SampleRate {
 class BME680BSECComponent : public Component, public i2c::I2CDevice {
  public:
   void set_temperature_offset(float offset) { this->temperature_offset_ = offset; }
-  void set_iaq_mode(IAQMode iaq_mode) { this->iaq_mode_ = iaq_mode; }
   void set_state_save_interval(uint32_t interval) { this->state_save_interval_ms_ = interval; }
 
   void set_sample_rate(SampleRate sample_rate) { this->sample_rate_ = sample_rate; }
@@ -45,6 +39,7 @@ class BME680BSECComponent : public Component, public i2c::I2CDevice {
   void set_humidity_sensor(sensor::Sensor *sensor) { this->humidity_sensor_ = sensor; }
   void set_gas_resistance_sensor(sensor::Sensor *sensor) { this->gas_resistance_sensor_ = sensor; }
   void set_iaq_sensor(sensor::Sensor *sensor) { this->iaq_sensor_ = sensor; }
+  void set_iaq_static_sensor(sensor::Sensor *sensor) { this->iaq_static_sensor_ = sensor; }
   void set_iaq_accuracy_text_sensor(text_sensor::TextSensor *sensor) { this->iaq_accuracy_text_sensor_ = sensor; }
   void set_iaq_accuracy_sensor(sensor::Sensor *sensor) { this->iaq_accuracy_sensor_ = sensor; }
   void set_co2_equivalent_sensor(sensor::Sensor *sensor) { this->co2_equivalent_sensor_ = sensor; }
@@ -61,7 +56,7 @@ class BME680BSECComponent : public Component, public i2c::I2CDevice {
   void loop() override;
 
  protected:
-  void set_config_(const uint8_t *config);
+  void set_config_(const uint8_t *config, u_int32_t len);
   float calc_sensor_sample_rate_(SampleRate sample_rate);
   void update_subscription_();
 
@@ -94,7 +89,6 @@ class BME680BSECComponent : public Component, public i2c::I2CDevice {
   uint32_t last_state_save_ms_ = 0;
 
   float temperature_offset_{0};
-  IAQMode iaq_mode_{IAQ_MODE_STATIC};
 
   SampleRate sample_rate_{SAMPLE_RATE_LP};  // Core/gas sample rate
   SampleRate temperature_sample_rate_{SAMPLE_RATE_DEFAULT};
@@ -106,6 +100,7 @@ class BME680BSECComponent : public Component, public i2c::I2CDevice {
   sensor::Sensor *humidity_sensor_;
   sensor::Sensor *gas_resistance_sensor_;
   sensor::Sensor *iaq_sensor_;
+  sensor::Sensor *iaq_static_sensor_;
   text_sensor::TextSensor *iaq_accuracy_text_sensor_;
   sensor::Sensor *iaq_accuracy_sensor_;
   sensor::Sensor *co2_equivalent_sensor_;

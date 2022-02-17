@@ -8,6 +8,10 @@ namespace bme680_bsec {
 #ifdef USE_BSEC
 static const char *const TAG = "bme680_bsec.sensor";
 
+#ifdef BME680_BSEC_CONFIGURATION
+static const uint8_t bsec_configuration[] = BME680_BSEC_CONFIGURATION;
+#endif
+
 static const std::string IAQ_ACCURACY_STATES[4] = {"Stabilizing", "Uncertain", "Calibrating", "Calibrated"};
 
 BME680BSECComponent *BME680BSECComponent::instance;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
@@ -22,7 +26,6 @@ void BME680BSECComponent::setup() {
     return;
   }
 
-  // this->bme680_.dev_id = this->address_;
   this->bme680_.intf = BME68X_I2C_INTF;
   this->bme680_.read = BME680BSECComponent::read_bytes_wrapper;
   this->bme680_.write = BME680BSECComponent::write_bytes_wrapper;
@@ -34,18 +37,15 @@ void BME680BSECComponent::setup() {
     this->mark_failed();
     return;
   }
+  #ifdef BME680_BSEC_CONFIGURATION
+  this->set_config_(bsec_configuration, sizeof(bsec_configuration));
+  if (this->bsec_status_ != BSEC_OK) {
+    this->mark_failed();
+    return;
+  }
 
-//   if (this->sample_rate_ == SAMPLE_RATE_ULP) {
-//     const uint8_t bsec_config[] = {
-// #include "config/generic_33v_300s_28d/bsec_iaq.txt"
-//     };
-//     this->set_config_(bsec_config);
-//   } else {
-//     const uint8_t bsec_config[] = {
-// #include "config/generic_33v_3s_28d/bsec_iaq.txt"
-//     };
-//     this->set_config_(bsec_config);
-//   }
+  #endif
+
   this->update_subscription_();
   if (this->bsec_status_ != BSEC_OK) {
     this->mark_failed();
@@ -55,9 +55,14 @@ void BME680BSECComponent::setup() {
   this->load_state_();
 }
 
-void BME680BSECComponent::set_config_(const uint8_t *config) {
-  uint8_t work_buffer[BSEC_MAX_WORKBUFFER_SIZE];
-  this->bsec_status_ = bsec_set_configuration(config, BSEC_MAX_PROPERTY_BLOB_SIZE, work_buffer, sizeof(work_buffer));
+void BME680BSECComponent::set_config_(const uint8_t *config, uint32_t len) {
+  if (len>BSEC_MAX_PROPERTY_BLOB_SIZE) {
+    ESP_LOGE(TAG, "Configuration is too larger than BSEC_MAX_PROPERTY_BLOB_SIZE");
+    this->mark_failed();
+    return;
+  }
+  uint8_t work_buffer[BSEC_MAX_PROPERTY_BLOB_SIZE];
+  this->bsec_status_ = bsec_set_configuration(config, len, work_buffer, sizeof(work_buffer));
 }
 
 float BME680BSECComponent::calc_sensor_sample_rate_(SampleRate sample_rate) {
@@ -72,8 +77,13 @@ void BME680BSECComponent::update_subscription_() {
   int num_virtual_sensors = 0;
 
   if (this->iaq_sensor_) {
-    virtual_sensors[num_virtual_sensors].sensor_id =
-        this->iaq_mode_ == IAQ_MODE_STATIC ? BSEC_OUTPUT_STATIC_IAQ : BSEC_OUTPUT_IAQ;
+    virtual_sensors[num_virtual_sensors].sensor_id = BSEC_OUTPUT_IAQ;
+    virtual_sensors[num_virtual_sensors].sample_rate = this->calc_sensor_sample_rate_(SAMPLE_RATE_DEFAULT);
+    num_virtual_sensors++;
+  }
+
+  if (this->iaq_static_sensor_) {
+    virtual_sensors[num_virtual_sensors].sensor_id = BSEC_OUTPUT_STATIC_IAQ;
     virtual_sensors[num_virtual_sensors].sample_rate = this->calc_sensor_sample_rate_(SAMPLE_RATE_DEFAULT);
     num_virtual_sensors++;
   }
@@ -136,7 +146,6 @@ void BME680BSECComponent::dump_config() {
   }
 
   ESP_LOGCONFIG(TAG, "  Temperature Offset: %.2f", this->temperature_offset_);
-  ESP_LOGCONFIG(TAG, "  IAQ Mode: %s", this->iaq_mode_ == IAQ_MODE_STATIC ? "Static" : "Mobile");
   ESP_LOGCONFIG(TAG, "  Sample Rate: %s", BME680_BSEC_SAMPLE_RATE_LOG(this->sample_rate_));
   ESP_LOGCONFIG(TAG, "  State Save Interval: %ims", this->state_save_interval_ms_);
 
@@ -294,7 +303,7 @@ void BME680BSECComponent::read_(int64_t trigger_time_ns) {
     ESP_LOGD(TAG, "BME680 did not provide new data");
     return;
   }
-  }
+  
   for (uint8_t i=0; i<nFields; i++) {
     bsec_input_t inputs[BSEC_MAX_PHYSICAL_SENSOR];  // Temperature, Pressure, Humidity & Gas Resistance
     uint8_t num_inputs = 0;
@@ -365,18 +374,16 @@ void BME680BSECComponent::read_(int64_t trigger_time_ns) {
 
 void BME680BSECComponent::publish_(const bsec_output_t *outputs, uint8_t num_outputs) {
   ESP_LOGV(TAG, "Publishing sensor states");
+  uint8_t accuracy = 0xff;
   for (uint8_t i = 0; i < num_outputs; i++) {
     switch (outputs[i].sensor_id) {
       case BSEC_OUTPUT_IAQ:
-      case BSEC_OUTPUT_STATIC_IAQ:
-        uint8_t accuracy;
         accuracy = outputs[i].accuracy;
         this->publish_sensor_state_(this->iaq_sensor_, outputs[i].signal);
-        this->publish_sensor_state_(this->iaq_accuracy_text_sensor_, IAQ_ACCURACY_STATES[accuracy]);
-        this->publish_sensor_state_(this->iaq_accuracy_sensor_, accuracy, true);
-
-        // Queue up an opportunity to save state
-        this->defer("save_state", [this, accuracy]() { this->save_state_(accuracy); });
+        break;
+      case BSEC_OUTPUT_STATIC_IAQ:
+        accuracy = outputs[i].accuracy;
+        this->publish_sensor_state_(this->iaq_static_sensor_, outputs[i].signal);
         break;
       case BSEC_OUTPUT_CO2_EQUIVALENT:
         this->publish_sensor_state_(this->co2_equivalent_sensor_, outputs[i].signal);
@@ -396,6 +403,13 @@ void BME680BSECComponent::publish_(const bsec_output_t *outputs, uint8_t num_out
       case BSEC_OUTPUT_SENSOR_HEAT_COMPENSATED_HUMIDITY:
         this->publish_sensor_state_(this->humidity_sensor_, outputs[i].signal);
         break;
+    }
+    if (accuracy != 0xff) {
+        this->publish_sensor_state_(this->iaq_accuracy_text_sensor_, IAQ_ACCURACY_STATES[accuracy]);
+        this->publish_sensor_state_(this->iaq_accuracy_sensor_, accuracy, true);
+        // Queue up an opportunity to save state
+        this->defer("save_state", [this, accuracy]() { this->save_state_(accuracy); });
+
     }
   }
 }
