@@ -246,8 +246,10 @@ int Modbus::check_frame_() const {
 }
 
 void Modbus::try_extract_frame_() {
-  // Minimum Modbus RTU frame: addr(1) + FC(1) + exception(1) + CRC(2) = 5 bytes
-  static constexpr size_t MIN_FRAME_SIZE = 5;
+  // Standard Modbus RTU frames are at least 5 bytes, but user-defined function
+  // codes can legally have no payload and therefore be only 4 bytes
+  // (addr + function + CRC16).
+  static constexpr size_t MIN_FRAME_SIZE = 4;
   static constexpr size_t MAX_RESYNC_DROPS = 16;
   size_t drops = 0;
 
