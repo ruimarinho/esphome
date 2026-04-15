@@ -10,7 +10,11 @@ from tests.component_tests.types import SetCoreConfigCallable
 def test_modbus_accepts_flow_control_delays(
     set_core_config: SetCoreConfigCallable,
 ) -> None:
-    set_core_config(PlatformFramework.ESP32_IDF)
+    set_core_config(
+        PlatformFramework.ESP32_IDF,
+        platform_data={"board": "esp32dev", "variant": "ESP32"},
+    )
+    from esphome.components import esp32  # noqa: F401
 
     from esphome.components.modbus import (
         CONF_FLOW_CONTROL_PIN_POST_SEND_DELAY,
