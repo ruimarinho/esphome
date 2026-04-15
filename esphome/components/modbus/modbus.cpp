@@ -77,6 +77,10 @@ void Modbus::loop() {
     ESP_LOGW(TAG, "Stop waiting for response from %" PRIu8 " %" PRIu32 "ms after last send",
              this->waiting_for_response_, millis() - this->last_send_);
     this->waiting_for_response_ = 0;
+    this->waiting_device_ = nullptr;
+    this->post_timeout_quarantine_ = true;
+    this->post_timeout_ts_ = millis();
+    return;
   }
 
   // If there's no response pending and there's commands in the buffer
@@ -383,14 +387,18 @@ void Modbus::dispatch_frame_(size_t frame_len) {
                    "ms after last send",
                    function_code, exception, address, millis() - this->last_send_);
           if (this->waiting_for_response_ == address) {
-            device->on_modbus_error(function_code & FUNCTION_CODE_MASK, exception);
+            if (this->waiting_device_ == nullptr || this->waiting_device_ == device) {
+              device->on_modbus_error(function_code & FUNCTION_CODE_MASK, exception);
+            }
           } else {
             // Ignore modbus exception not related to a pending command
             ESP_LOGD(TAG, "Ignoring error - not expecting a response from %" PRIu8 "", address);
           }
         } else {  // Not an error response
           if (this->waiting_for_response_ == address) {
-            device->on_modbus_data(data);
+            if (this->waiting_device_ == nullptr || this->waiting_device_ == device) {
+              device->on_modbus_data(data);
+            }
           } else {
             // Ignore modbus response not related to a pending command
             this->late_ignored_response_count_++;
@@ -407,13 +415,23 @@ void Modbus::dispatch_frame_(size_t frame_len) {
              millis() - this->last_send_);
   }
 
-  if (this->waiting_for_response_ == address)
+  if (this->waiting_for_response_ == address) {
     this->waiting_for_response_ = 0;
+    this->waiting_device_ = nullptr;
+  }
 }
 
 void Modbus::send_next_frame_() {
   if (this->tx_buffer_.empty())
     return;
+
+  if (this->post_timeout_quarantine_) {
+    if (this->available() || !this->rx_buffer_.empty() ||
+        millis() - this->post_timeout_ts_ < this->frame_delay_ms_ + this->send_wait_time_ / 4) {
+      return;
+    }
+    this->post_timeout_quarantine_ = false;
+  }
 
   if (this->tx_blocked())
     return;
@@ -422,6 +440,7 @@ void Modbus::send_next_frame_() {
 
   if (this->role == ModbusRole::CLIENT) {
     this->waiting_for_response_ = frame.data.get()[0];
+    this->waiting_device_ = frame.sender;
   }
 
   if (this->flow_control_pin_ != nullptr) {
@@ -476,7 +495,7 @@ float Modbus::get_setup_priority() const {
 }
 
 void Modbus::send(uint8_t address, uint8_t function_code, uint16_t start_address, uint16_t number_of_entities,
-                  uint8_t payload_len, const uint8_t *payload) {
+                  uint8_t payload_len, const uint8_t *payload, ModbusDevice *sender) {
   static const size_t MAX_VALUES = 128;
 
   // Only check max number of registers for standard function codes
@@ -517,12 +536,12 @@ void Modbus::send(uint8_t address, uint8_t function_code, uint16_t start_address
     }
   }
 
-  this->queue_raw_(data, pos);
+  this->queue_raw_(data, pos, sender);
 }
 
 // Helper function for lambdas
 // Send raw command. Except CRC everything must be contained in payload
-void Modbus::send_raw(const std::vector<uint8_t> &payload) {
+void Modbus::send_raw(const std::vector<uint8_t> &payload, ModbusDevice *sender) {
   if (payload.empty()) {
     return;
   }
@@ -536,14 +555,14 @@ void Modbus::send_raw(const std::vector<uint8_t> &payload) {
 
   std::memcpy(data, payload.data(), payload.size());
 
-  this->queue_raw_(data, payload.size());
+  this->queue_raw_(data, payload.size(), sender);
 }
 
 // Assume data and length is valid and append CRC, then queue for sending. Used internally to avoid unnecessary copying
 // of data into vectors
-void Modbus::queue_raw_(const uint8_t *data, uint16_t len) {
+void Modbus::queue_raw_(const uint8_t *data, uint16_t len, ModbusDevice *sender) {
   if (this->tx_buffer_.size() < MODBUS_TX_BUFFER_SIZE) {
-    this->tx_buffer_.emplace_back(data, len);
+    this->tx_buffer_.emplace_back(data, len, sender);
   } else {
 #if ESPHOME_LOG_LEVEL >= ESPHOME_LOG_LEVEL_ERROR
     char hex_buf[format_hex_pretty_size(MODBUS_MAX_LOG_BYTES)];
