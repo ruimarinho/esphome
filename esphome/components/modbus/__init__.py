@@ -30,7 +30,24 @@ MODBUS_ROLES = {
     "server": ModbusRole.SERVER,
 }
 
-CONFIG_SCHEMA = (
+
+def validate_flow_control_delays(config):
+    if CONF_FLOW_CONTROL_PIN in config:
+        return config
+
+    if CONF_FLOW_CONTROL_PIN_PRE_SEND_DELAY in config:
+        raise cv.Invalid(
+            f"'{CONF_FLOW_CONTROL_PIN_PRE_SEND_DELAY}' requires '{CONF_FLOW_CONTROL_PIN}'"
+        )
+
+    if CONF_FLOW_CONTROL_PIN_POST_SEND_DELAY in config:
+        raise cv.Invalid(
+            f"'{CONF_FLOW_CONTROL_PIN_POST_SEND_DELAY}' requires '{CONF_FLOW_CONTROL_PIN}'"
+        )
+
+    return config
+
+CONFIG_SCHEMA = cv.All(
     cv.Schema(
         {
             cv.GenerateID(): cv.declare_id(Modbus),
@@ -52,7 +69,8 @@ CONFIG_SCHEMA = (
         }
     )
     .extend(cv.COMPONENT_SCHEMA)
-    .extend(uart.UART_DEVICE_SCHEMA)
+    .extend(uart.UART_DEVICE_SCHEMA),
+    validate_flow_control_delays,
 )
 
 
