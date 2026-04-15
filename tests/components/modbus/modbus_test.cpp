@@ -10,11 +10,13 @@ class TestModbus : public Modbus {
   void append_rx_bytes(const std::vector<uint8_t> &bytes) {
     this->rx_buffer_.insert(this->rx_buffer_.end(), bytes.begin(), bytes.end());
   }
+  void run_drop_impossible() { this->drop_impossible_leading_bytes_(); }
   void run_extract() { this->try_extract_frame_(); }
   void set_waiting(uint8_t addr) { this->waiting_for_response_ = addr; }
   size_t rx_buffer_size() const { return this->rx_buffer_.size(); }
   uint32_t parse_failures() const { return this->parse_failure_count_; }
   uint32_t resync_recoveries() const { return this->resync_recovery_count_; }
+  uint32_t impossible_leading_drops() const { return this->impossible_leading_byte_drop_count_; }
 };
 
 class MockDevice : public ModbusDevice {
@@ -99,6 +101,56 @@ TEST(ModbusTest, SlidingResyncRecoversValidFrameAfterNoise) {
 
   ASSERT_EQ(device.payloads.size(), 1);
   EXPECT_EQ(device.payloads[0], (std::vector<uint8_t>{0x12, 0x34}));
+  EXPECT_EQ(modbus.parse_failures(), 1);
+  EXPECT_EQ(modbus.resync_recoveries(), 1);
+  EXPECT_EQ(modbus.rx_buffer_size(), 0);
+}
+
+TEST(ModbusTest, DropsImpossibleLeadingByteBeforeResyncWhenWaitingForResponse) {
+  TestModbus modbus;
+  modbus.set_role(ModbusRole::CLIENT);
+
+  MockDevice device;
+  device.set_parent(&modbus);
+  device.set_address(0x01);
+  modbus.register_device(&device);
+  modbus.set_waiting(0x01);
+
+  std::vector<uint8_t> frame = make_rtu_frame({0x01, 0x03, 0x02, 0x12, 0x34});
+  std::vector<uint8_t> with_noise = {0x00};
+  with_noise.insert(with_noise.end(), frame.begin(), frame.end());
+
+  modbus.append_rx_bytes(with_noise);
+  modbus.run_drop_impossible();
+  modbus.run_extract();
+
+  ASSERT_EQ(device.payloads.size(), 1);
+  EXPECT_EQ(device.payloads[0], (std::vector<uint8_t>{0x12, 0x34}));
+  EXPECT_EQ(modbus.impossible_leading_drops(), 1);
+  EXPECT_EQ(modbus.parse_failures(), 0);
+  EXPECT_EQ(modbus.rx_buffer_size(), 0);
+}
+
+TEST(ModbusTest, NonMatchingLeadingByteStillUsesSlidingResyncWhenNotWaiting) {
+  TestModbus modbus;
+  modbus.set_role(ModbusRole::CLIENT);
+
+  MockDevice device;
+  device.set_parent(&modbus);
+  device.set_address(0x01);
+  modbus.register_device(&device);
+
+  std::vector<uint8_t> frame = make_rtu_frame({0x01, 0x03, 0x02, 0x12, 0x34});
+  std::vector<uint8_t> with_noise = {0xAA};
+  with_noise.insert(with_noise.end(), frame.begin(), frame.end());
+
+  modbus.append_rx_bytes(with_noise);
+  modbus.run_drop_impossible();
+  modbus.run_extract();
+
+  ASSERT_EQ(device.payloads.size(), 1);
+  EXPECT_EQ(device.payloads[0], (std::vector<uint8_t>{0x12, 0x34}));
+  EXPECT_EQ(modbus.impossible_leading_drops(), 0);
   EXPECT_EQ(modbus.parse_failures(), 1);
   EXPECT_EQ(modbus.resync_recoveries(), 1);
   EXPECT_EQ(modbus.rx_buffer_size(), 0);
