@@ -40,8 +40,8 @@ class TestUARTComponent : public uart::UARTComponent {
     return true;
   }
 
-  int available() override { return this->rx_fifo.size(); }
-  void flush() override {}
+  size_t available() override { return this->rx_fifo.size(); }
+  uart::UARTFlushResult flush() override { return uart::UARTFlushResult::UART_FLUSH_RESULT_ASSUMED_SUCCESS; }
   void check_logger_conflict() override {}
 
   void inject_rx(const std::vector<uint8_t> &data) {
