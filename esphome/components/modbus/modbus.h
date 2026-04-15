@@ -63,11 +63,14 @@ class Modbus : public uart::UARTDevice, public Component {
   ModbusRole role;
 
  protected:
-  bool parse_modbus_byte_(uint8_t byte);
+  int check_frame_() const;
+  void try_extract_frame_();
+  void dispatch_frame_(size_t frame_len);
   void receive_and_parse_modbus_bytes_();
   void clear_rx_buffer_(const LogString *reason, bool warn = false);
   void send_next_frame_();
   void queue_raw_(const uint8_t *data, uint16_t len);
+  void maybe_log_diagnostic_summary_();
 
   uint32_t last_modbus_byte_{0};
   uint32_t last_send_{0};
@@ -78,6 +81,15 @@ class Modbus : public uart::UARTDevice, public Component {
   uint16_t turnaround_delay_ms_{100};
   uint8_t waiting_for_response_{0};
   bool disable_crc_{false};
+
+  // Diagnostic counters for transport health monitoring
+  uint32_t parse_failure_count_{0};
+  uint32_t resync_recovery_count_{0};
+  uint32_t partial_response_timeout_count_{0};
+  uint32_t wait_timeout_count_{0};
+  uint32_t late_ignored_response_count_{0};
+  uint32_t last_diagnostic_summary_ms_{0};
+  uint32_t last_diagnostic_summary_total_{0};
 
   GPIOPin *flow_control_pin_{nullptr};
 
