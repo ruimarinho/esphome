@@ -132,7 +132,33 @@ void Modbus::receive_and_parse_modbus_bytes_() {
     this->rx_buffer_.erase(this->rx_buffer_.begin(), this->rx_buffer_.begin() + excess);
   }
 
+  this->drop_impossible_leading_bytes_();
   this->try_extract_frame_();
+}
+
+void Modbus::drop_impossible_leading_bytes_() {
+  while (!this->rx_buffer_.empty()) {
+    const uint8_t first = this->rx_buffer_.front();
+    bool impossible = false;
+
+    if (this->waiting_for_response_ != 0) {
+      // While a response is pending, any leading byte that does not match the
+      // expected slave address cannot begin a valid RTU response frame.
+      impossible = first != this->waiting_for_response_;
+    } else {
+      // With no response pending, only trim explicit NUL noise eagerly.
+      impossible = first == 0x00;
+    }
+
+    if (!impossible) {
+      break;
+    }
+
+    this->impossible_leading_byte_drop_count_++;
+    ESP_LOGD(TAG, "Dropping impossible leading byte 0x%02X while waiting for addr=%" PRIu8, first,
+             this->waiting_for_response_);
+    this->rx_buffer_.erase(this->rx_buffer_.begin());
+  }
 }
 
 // Examine rx_buffer_ starting at byte 0 for a complete, valid Modbus RTU frame.
