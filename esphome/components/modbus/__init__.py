@@ -19,6 +19,8 @@ MULTI_CONF = True
 
 CONF_ROLE = "role"
 CONF_MODBUS_ID = "modbus_id"
+CONF_FLOW_CONTROL_PIN_PRE_SEND_DELAY = "flow_control_pin_pre_send_delay"
+CONF_FLOW_CONTROL_PIN_POST_SEND_DELAY = "flow_control_pin_post_send_delay"
 CONF_SEND_WAIT_TIME = "send_wait_time"
 CONF_TURNAROUND_TIME = "turnaround_time"
 
@@ -34,6 +36,12 @@ CONFIG_SCHEMA = (
             cv.GenerateID(): cv.declare_id(Modbus),
             cv.Optional(CONF_ROLE, default="client"): cv.enum(MODBUS_ROLES),
             cv.Optional(CONF_FLOW_CONTROL_PIN): pins.gpio_output_pin_schema,
+            cv.Optional(
+                CONF_FLOW_CONTROL_PIN_PRE_SEND_DELAY
+            ): cv.positive_time_period_milliseconds,
+            cv.Optional(
+                CONF_FLOW_CONTROL_PIN_POST_SEND_DELAY
+            ): cv.positive_time_period_milliseconds,
             cv.Optional(
                 CONF_SEND_WAIT_TIME, default="250ms"
             ): cv.positive_time_period_milliseconds,
@@ -59,6 +67,10 @@ async def to_code(config):
     if CONF_FLOW_CONTROL_PIN in config:
         pin = await gpio_pin_expression(config[CONF_FLOW_CONTROL_PIN])
         cg.add(var.set_flow_control_pin(pin))
+    if CONF_FLOW_CONTROL_PIN_PRE_SEND_DELAY in config:
+        cg.add(var.set_flow_control_pin_pre_send_delay(config[CONF_FLOW_CONTROL_PIN_PRE_SEND_DELAY]))
+    if CONF_FLOW_CONTROL_PIN_POST_SEND_DELAY in config:
+        cg.add(var.set_flow_control_pin_post_send_delay(config[CONF_FLOW_CONTROL_PIN_POST_SEND_DELAY]))
 
     cg.add(var.set_send_wait_time(config[CONF_SEND_WAIT_TIME]))
     cg.add(var.set_turnaround_time(config[CONF_TURNAROUND_TIME]))
