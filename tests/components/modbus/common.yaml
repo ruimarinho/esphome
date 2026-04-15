@@ -4,4 +4,5 @@ modbus:
   flow_control_pin_pre_send_delay: 5ms
   flow_control_pin_post_send_delay: 7ms
   send_wait_time: 500ms
+  rx_buffer_delay: 50ms
   turnaround_time: 100ms

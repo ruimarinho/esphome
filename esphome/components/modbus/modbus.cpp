@@ -44,10 +44,12 @@ void Modbus::loop() {
   // If the response frame is finished (including interframe delay) - we timeout.
   // The long_rx_buffer_delay accounts for long responses (larger than the UART rx_full_threshold) to avoid timeouts
   // when the buffer is filling the back half of the response
-  const uint16_t timeout = std::max(
-      (uint16_t) this->frame_delay_ms_,
-      (uint16_t) (this->rx_buffer_.size() >= this->parent_->get_rx_full_threshold() ? this->long_rx_buffer_delay_ms_
-                                                                                    : 0));
+  uint16_t timeout = this->frame_delay_ms_;
+  if (this->rx_buffer_delay_override_ms_ != 0) {
+    timeout = std::max(timeout, this->rx_buffer_delay_override_ms_);
+  } else if (this->rx_buffer_.size() >= this->parent_->get_rx_full_threshold()) {
+    timeout = std::max(timeout, this->long_rx_buffer_delay_ms_);
+  }
   // We use millis() here and elsewhere instead of App.get_loop_component_start_time() to avoid stale timestamps
   // It's critical in all timestamp comparisons that the left timestamp comes before the right one in time
   // If we use a cached value in place of millis() and last_modbus_byte_ is updated inside our loop
@@ -483,10 +485,12 @@ void Modbus::dump_config() {
                 "  Long Rx Buffer Delay: %d ms\n"
                 "  Flow Control Pre-Send Delay: %d ms\n"
                 "  Flow Control Post-Send Delay: %d ms\n"
+                "  Rx Buffer Delay Override: %d ms\n"
                 "  CRC Disabled: %s",
                 this->send_wait_time_, this->turnaround_delay_ms_, this->frame_delay_ms_,
                 this->long_rx_buffer_delay_ms_, this->flow_control_pin_pre_send_delay_ms_,
-                this->flow_control_pin_post_send_delay_ms_, YESNO(this->disable_crc_));
+                this->flow_control_pin_post_send_delay_ms_, this->rx_buffer_delay_override_ms_,
+                YESNO(this->disable_crc_));
   LOG_PIN("  Flow Control Pin: ", this->flow_control_pin_);
 }
 float Modbus::get_setup_priority() const {

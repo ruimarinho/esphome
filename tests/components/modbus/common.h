@@ -19,6 +19,14 @@ class TestUARTComponent : public uart::UARTComponent {
   std::vector<uint8_t> written_data;
   std::vector<uint8_t> rx_fifo;
 
+  void set_test_baud_rate(uint32_t baud_rate) { this->baud_rate_ = baud_rate; }
+
+  void set_rx_full_threshold(size_t rx_full_threshold) override {
+    this->rx_full_threshold_ = rx_full_threshold;
+  }
+
+  void set_rx_timeout(size_t rx_timeout) override { this->rx_timeout_ = rx_timeout; }
+
   void write_array(const uint8_t *data, size_t len) override {
     this->written_data.insert(this->written_data.end(), data, data + len);
   }

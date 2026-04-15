@@ -35,6 +35,12 @@ class ModbusTimeoutTest : public ::testing::Test {
     }
   }
 
+  void reconfigure_bus(uint32_t baud_rate = 9600, size_t rx_full_threshold = 0) {
+    uart_.set_test_baud_rate(baud_rate);
+    uart_.set_rx_full_threshold(rx_full_threshold);
+    modbus_.setup();
+  }
+
   void pump_loops(int count, uint32_t delay_ms = 1) {
     for (int i = 0; i < count; i++) {
       modbus_.loop();
@@ -150,6 +156,26 @@ TEST_F(ModbusTimeoutTest, ResponseJustUnderTimeoutStillDispatchesNormally) {
   sleep_ms(15);
 
   uart_.inject_rx(make_response(0x01, 0x04, {0x00, 0x04, 0xD2, 0x00}));
+  modbus_.loop();
+
+  EXPECT_EQ(device_.received_data.size(), 1);
+}
+
+TEST_F(ModbusTimeoutTest, RxBufferDelayOverrideAllowsChunkedResponsePastThresholdDelay) {
+  reconfigure_bus(9600, 1);
+  modbus_.set_rx_buffer_delay(15);
+
+  queue_read(0x0016, 1);
+  pump_until_sent();
+
+  const std::vector<uint8_t> full_response = make_response(0x01, 0x04, {0x00, 0x04, 0xD2, 0x00});
+  uart_.inject_rx(std::vector<uint8_t>(full_response.begin(), full_response.begin() + 5));
+  modbus_.loop();
+
+  sleep_ms(8);
+  modbus_.loop();
+
+  uart_.inject_rx(std::vector<uint8_t>(full_response.begin() + 5, full_response.end()));
   modbus_.loop();
 
   EXPECT_EQ(device_.received_data.size(), 1);
