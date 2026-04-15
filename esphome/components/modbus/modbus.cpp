@@ -7,7 +7,6 @@ namespace esphome {
 namespace modbus {
 
 static const char *const TAG = "modbus";
-static constexpr uint32_t DIAGNOSTIC_SUMMARY_INTERVAL_MS = 60000;
 
 // Maximum bytes to log for Modbus frames (truncated if larger)
 static constexpr size_t MODBUS_MAX_LOG_BYTES = 64;
@@ -82,7 +81,6 @@ void Modbus::loop() {
 
   // If there's no response pending and there's commands in the buffer
   this->send_next_frame_();
-  this->maybe_log_diagnostic_summary_();
 }
 
 bool Modbus::tx_blocked() {
@@ -529,29 +527,6 @@ void Modbus::clear_rx_buffer_(const LogString *reason, bool warn) {
     }
     this->rx_buffer_.clear();
   }
-}
-
-void Modbus::maybe_log_diagnostic_summary_() {
-  const uint32_t now = millis();
-  const uint32_t total = this->wait_timeout_count_ + this->late_ignored_response_count_ +
-                         this->partial_response_timeout_count_ + this->parse_failure_count_ +
-                         this->resync_recovery_count_;
-
-  if (now - this->last_diagnostic_summary_ms_ < DIAGNOSTIC_SUMMARY_INTERVAL_MS) {
-    return;
-  }
-  this->last_diagnostic_summary_ms_ = now;
-
-  if (total == this->last_diagnostic_summary_total_) {
-    return;
-  }
-  this->last_diagnostic_summary_total_ = total;
-
-  ESP_LOGI(TAG,
-           "Diagnostics summary wait_timeouts=%" PRIu32 " late_ignored=%" PRIu32 " partial_timeouts=%" PRIu32
-           " parse_failures=%" PRIu32 " resync_recoveries=%" PRIu32,
-           this->wait_timeout_count_, this->late_ignored_response_count_, this->partial_response_timeout_count_,
-           this->parse_failure_count_, this->resync_recovery_count_);
 }
 
 }  // namespace modbus
