@@ -66,6 +66,7 @@ class Modbus : public uart::UARTDevice, public Component {
   }
   void set_send_wait_time(uint16_t time_in_ms) { this->send_wait_time_ = time_in_ms; }
   void set_turnaround_time(uint16_t time_in_ms) { this->turnaround_delay_ms_ = time_in_ms; }
+  void set_rx_buffer_delay(uint32_t time_in_ms) { this->rx_buffer_delay_override_ms_ = time_in_ms; }
   void set_disable_crc(bool disable_crc) { this->disable_crc_ = disable_crc; }
 
   ModbusRole role;
@@ -87,6 +88,7 @@ class Modbus : public uart::UARTDevice, public Component {
   uint16_t long_rx_buffer_delay_ms_{0};
   uint16_t flow_control_pin_pre_send_delay_ms_{0};
   uint16_t flow_control_pin_post_send_delay_ms_{0};
+  uint32_t rx_buffer_delay_override_ms_{0};
   uint16_t send_wait_time_{250};
   uint16_t turnaround_delay_ms_{100};
   uint8_t waiting_for_response_{0};
